@@ -1,62 +1,74 @@
 import cv2
-import os
-
-# Get the path to the Haar Cascade files
-opencv_data_path = cv2.__path__[0]
-face_cascade_path = os.path.join(opencv_data_path, 'data', 'haarcascade_frontalface_default.xml')
-
-# Load the Haar Cascade files
-face_cascade = cv2.CascadeClassifier(face_cascade_path)
+import numpy as np
+import pyrealsense2 as rs
 
 
-# Check if the cascade files were loaded successfully
-if face_cascade.empty():
-    print(f"Error: Could not load Haar Cascade file: {face_cascade_path}")
-    exit()
-    
-# Check available cameras
-for i in range(0, 2):  # Check the first 2 indices
-    cap = cv2.VideoCapture(i)
-    if cap.isOpened():
-        print(f"Camera index {i} is available.")
-        cap.release()
-    else:
-        print(f"No camera found at index {i}.")
-        
-# Initialize the webcam
-cam = cv2.VideoCapture(1)
-if not cam.isOpened():
-    print("Error: Could not open webcam.")
-    exit()
+# Paths to the Caffe model files
+model_path = r"C:\Users\junio\Downloads\opencv_face_detector_uint8.pb"
+config_path = r"C:\Users\junio\Downloads\opencv_face_detector.pbtxt"
+net = cv2.dnn.readNetFromTensorflow(model_path, config_path)
+
+# Initialize the RealSense pipeline
+pipeline = rs.pipeline()
+config = rs.config()
+
+# Enable the color stream
+config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+
+# Start the pipeline
+pipeline.start(config)
 
 # Create a named window
-window_name = 'Face Detection'
+window_name = "Face Detection"
 cv2.namedWindow(window_name, cv2.WINDOW_AUTOSIZE)
 
-while True:
-    # Read a frame from the webcam
-    ret, img = cam.read()
-    if not ret:
-        print("Error: Could not read frame.")
-        break
+try:
+    while True:
+        # Wait for a coherent pair of frames: depth and color
+        frames = pipeline.wait_for_frames()
+        color_frame = frames.get_color_frame()
 
-    # Convert the frame to grayscale
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        if not color_frame:
+            continue
 
-    # Detect faces in the grayscale frame
-    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.3, minNeighbors=5)
+        # Convert the color frame to a numpy array
+        color_image = np.asanyarray(color_frame.get_data())
 
-    # Draw rectangles around the detected faces
-    for (x, y, w, h) in faces:
-        cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
+        # Get the frame dimensions
+        (h, w) = color_image.shape[:2]
 
-    # Display the frame
-    cv2.imshow(window_name, img)
+        # Prepare the input blob for the DNN
+        blob = cv2.dnn.blobFromImage(
+            color_image, 1.0, (300, 300), [104, 117, 123], swapRB=False, crop=False
+        )
+        net.setInput(blob)
 
-    # Exit if 'ESC' is pressed
-    if cv2.waitKey(1) & 0xFF == 27:
-        break
+        # Perform face detection
+        detections = net.forward()
 
-# Release the webcam and close all OpenCV windows
-cam.release()
-cv2.destroyAllWindows()
+        # Loop over the detections
+        for i in range(detections.shape[2]):
+            confidence = detections[0, 0, i, 2]
+
+            # Filter out weak detections
+            if confidence > 0.7:
+                # Compute the bounding box coordinates
+                box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                (startX, startY, endX, endY) = box.astype("int")
+
+                # Draw the bounding box around the face
+                cv2.rectangle(
+                    color_image, (startX, startY), (endX, endY), (255, 0, 0), 2
+                )
+
+        # Display the frame
+        cv2.imshow(window_name, color_image)
+
+        # Exit if 'ESC' is pressed
+        if cv2.waitKey(1) & 0xFF == 27:
+            break
+
+finally:
+    # Stop the pipeline and close all OpenCV windows
+    pipeline.stop()
+    cv2.destroyAllWindows()
