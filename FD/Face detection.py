@@ -4,8 +4,8 @@ import pyrealsense2 as rs
 
 
 # Paths to the Caffe model files
-model_path = r"C:\Users\junio\Downloads\opencv_face_detector_uint8.pb"
-config_path = r"C:\Users\junio\Downloads\opencv_face_detector.pbtxt"
+model_path = r"C:\Users\junio\Downloads\GitHub\IA\PM\FD\opencv_face_detector_uint8.pb"
+config_path = r"C:\Users\junio\Downloads\GitHub\IA\PM\FD\opencv_face_detector.pbtxt"
 net = cv2.dnn.readNetFromTensorflow(model_path, config_path)
 
 # Initialize the RealSense pipeline
